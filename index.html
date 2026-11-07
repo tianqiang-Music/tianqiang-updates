@@ -23,14 +23,14 @@
 </style></head><body><div class="wrap">
 
 <h1>天强音乐 <em>API</em></h1>
-<p class="lead">AI 音乐生成接口：一次调用生成 2 首完整歌曲，失败自动退额度，查询任务与下载不再计费。</p>
+<p class="lead">会员制 AI 音乐生成接口：账号有有效会员就能调用，不按次扣费。一次调用生成 2 首完整歌曲。</p>
 
 <h2>基础信息</h2>
 <table>
 <tr><th>Base URL</th><td><code>https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi</code></td></tr>
-<tr><th>鉴权</th><td>请求头 <code>Authorization: Bearer tq_xxx</code>，也支持 <code>x-api-key: tq_xxx</code></td></tr>
+<tr><th>鉴权</th><td>平台账号登录后拿到的 <code>Authorization: Bearer &lt;access_token&gt;</code>（<strong>不需要申请任何 API Key</strong>）</td></tr>
 <tr><th>数据格式</th><td>请求与响应均为 <code>application/json</code>（UTF-8）</td></tr>
-<tr><th>计费</th><td>1 次额度 = 1 次生成（固定出 2 首）；查询任务、拉取音频地址不扣额度</td></tr>
+<tr><th>计费</th><td><strong>会员制</strong>：会员有效期内不限次调用，不扣次数、不查余额；会员过期返回 403</td></tr>
 <tr><th>机器可读</th><td><code>https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi/openapi.json</code>（OpenAPI 3.0.3）</td></tr>
 </table>
 
@@ -38,18 +38,24 @@
 
 <h2>端点一览</h2>
 <table>
-<tr><th><span class="tag get">GET</span> /me</th><td>查询剩余额度</td></tr>
-<tr><th><span class="tag post">POST</span> /v1/music/generate</th><td>生成音乐，扣 1 次额度</td></tr>
-<tr><th><span class="tag get">GET</span> /v1/music/task?id=xxx</th><td>查询任务状态与音频地址，不扣额度</td></tr>
+<tr><th><span class="tag get">GET</span> /me</th><td>查询会员状态与能否生成</td></tr>
+<tr><th><span class="tag post">POST</span> /v1/music/generate</th><td>生成音乐（会员有效即可）</td></tr>
+<tr><th><span class="tag get">GET</span> /v1/music/task?id=xxx</th><td>查询任务状态与音频地址</td></tr>
 </table>
 
-<h2>1 · 查询额度</h2>
-<pre>curl -H "Authorization: Bearer tq_xxx" \
+<h2>1 · 查询会员状态</h2>
+<pre>curl -H "Authorization: Bearer &lt;access_token&gt;" \
   https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi/me</pre>
 <pre>{
   "code": 200,
   "message": "success",
-  "data": { "balance": 20, "unit": "次生成" }
+  "data": {
+    "member": true,
+    "tier": "owner",
+    "expires_at": "2099-12-31T00:00:00Z",
+    "account": "you@example.com",
+    "billing": "会员期内不限次，不按次扣费"
+  }
 }</pre>
 
 <h2>2 · 生成音乐</h2>
@@ -65,7 +71,7 @@
 <tr><th>negative_tags</th><td>需要排除的风格，可选</td></tr>
 </table>
 <pre>curl -X POST https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi/v1/music/generate \
-  -H "Authorization: Bearer tq_xxx" \
+  -H "Authorization: Bearer &lt;access_token&gt;" \
   -H "Content-Type: application/json" \
   -d '{
     "gpt_description_prompt": "温暖的城市民谣，木吉他，女声",
@@ -80,7 +86,7 @@
 <div class="note">返回的只是任务号。必须继续调用「查询任务」轮询，直到 <code>status</code> 变成 <code>completed</code> 才能拿到音频。</div>
 
 <h2>3 · 查询任务</h2>
-<pre>curl -H "Authorization: Bearer tq_xxx" \
+<pre>curl -H "Authorization: Bearer &lt;access_token&gt;" \
   "https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi/v1/music/task?id=a1b2c3d4-..."</pre>
 <table>
 <tr><th>status</th><td><code>processing</code> 生成中 / <code>completed</code> 完成 / <code>failed</code> 失败</td></tr>
@@ -94,17 +100,17 @@
 
 <h2>错误码</h2>
 <table>
-<tr><th>401</th><td>没带 Key，或 Key 无效 / 已停用</td></tr>
-<tr><th>402</th><td>自己的额度不足，<code>data.balance</code> 是当前余额</td></tr>
+<tr><th>401</th><td>没带凭证，或 Key 无效 / 已停用 / 登录状态失效</td></tr>
+<tr><th>403</th><td>账号没有有效会员，<code>data.tier</code> 与 <code>data.expires_at</code> 可判断到期时间</td></tr>
 <tr><th>400</th><td>请求体不是合法 JSON、缺少必要参数或参数不合法</td></tr>
 <tr><th>404</th><td>接口路径不存在</td></tr>
-<tr><th>502 / 503</th><td>上游生成服务异常，<strong>本次不扣额度</strong>，可稍后重试</td></tr>
+<tr><th>502 / 503</th><td>上游生成服务异常，可稍后重试；503 也可能是平台侧额度临时用尽</td></tr>
 </table>
 
 <h2>最小可用流程（JavaScript）</h2>
 <pre>const BASE = 'https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi';
-const KEY  = 'tq_xxx';
-const H    = { Authorization: 'Bearer ' + KEY };
+const TOKEN = '&lt;access_token&gt;';
+const H     = { Authorization: 'Bearer ' + TOKEN };
 
 async function makeSong(desc) {
   const res = await fetch(BASE + '/v1/music/generate', {
@@ -123,8 +129,15 @@ async function makeSong(desc) {
   }
 }</pre>
 
-<h2>Key 与额度</h2>
-<p>本接口不开放公众注册，Key 由平台方手动发放；需要 Key 或加额度，联系平台运营。</p>
+<h2>凭证与会员</h2>
+<p>本接口不开放公众注册、也<strong>不需要 API Key</strong>。只用平台账号登录后拿到的 <code>access_token</code>：</p>
+<pre>const res = await fetch('https://pfamjwzbmpwskhsspcev.supabase.co/auth/v1/token?grant_type=password', {
+  method: 'POST',
+  headers: { apikey: '&lt;平台 anon key&gt;', 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'you@example.com', password: '你的密码' })
+});
+const accessToken = (await res.json()).access_token;</pre>
+<p>会员状态在服务端校验（按服务器时间），客户端改本机时间没有用；会员过期返回 403，去会员中心续费后立即恢复。</p>
 
 <p style="margin-top:40px;color:var(--muted);font-size:13px">© 2026 天强AI音乐创作平台 · 接口文档</p>
 </div></body></html>
