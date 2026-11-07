@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>天强音乐 API · 接口文档</title>
+<style>
+  :root{--bg:#0b0b0d;--panel:#141417;--line:#26262b;--text:#ececf1;--muted:#9a9aa5;--gold:#e6a83c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.75 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:900px;margin:0 auto;padding:44px 22px 80px}
+  h1{font-size:30px;margin:0 0 8px;letter-spacing:.5px}
+  h1 em{font-style:normal;color:var(--gold)}
+  h2{font-size:20px;margin:40px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+  p.lead{color:var(--muted);margin:0 0 24px}
+  code{background:#1c1c21;padding:2px 6px;border-radius:5px;font-size:13px;color:#e9d7ad}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow:auto;font-size:13px;line-height:1.6}
+  table{width:100%;border-collapse:collapse;margin:10px 0 8px;font-size:14px}
+  th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top}
+  th{color:var(--muted);font-weight:500;width:30%}
+  .tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);margin-right:6px}
+  .post{color:#7dd3fc;border-color:#1e3a4a}
+  .get{color:#a7f3d0;border-color:#1e4034}
+  .note{border-left:3px solid var(--gold);background:#17140d;padding:12px 16px;border-radius:0 8px 8px 0;color:#e6dcc4;margin:14px 0}
+</style></head><body><div class="wrap">
+
+<h1>天强音乐 <em>API</em></h1>
+<p class="lead">AI 音乐生成接口：一次调用生成 2 首完整歌曲，失败自动退额度，查询任务与下载不再计费。</p>
+
+<h2>基础信息</h2>
+<table>
+<tr><th>Base URL</th><td><code>https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi</code></td></tr>
+<tr><th>鉴权</th><td>请求头 <code>Authorization: Bearer tq_xxx</code>，也支持 <code>x-api-key: tq_xxx</code></td></tr>
+<tr><th>数据格式</th><td>请求与响应均为 <code>application/json</code>（UTF-8）</td></tr>
+<tr><th>计费</th><td>1 次额度 = 1 次生成（固定出 2 首）；查询任务、拉取音频地址不扣额度</td></tr>
+<tr><th>机器可读</th><td><code>/openapi.json</code>（OpenAPI 3.0.3）</td></tr>
+</table>
+
+<div class="note">音频链接有效期约 1 小时。生成完成后请立刻把 mp3 转存到自己的存储，不要长期依赖原链接。</div>
+
+<h2>端点一览</h2>
+<table>
+<tr><th><span class="tag get">GET</span> /me</th><td>查询剩余额度</td></tr>
+<tr><th><span class="tag post">POST</span> /v1/music/generate</th><td>生成音乐，扣 1 次额度</td></tr>
+<tr><th><span class="tag get">GET</span> /v1/music/task?id=xxx</th><td>查询任务状态与音频地址，不扣额度</td></tr>
+</table>
+
+<h2>1 · 查询额度</h2>
+<pre>curl -H "Authorization: Bearer tq_xxx" \
+  https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi/me</pre>
+<pre>{
+  "code": 200,
+  "message": "success",
+  "data": { "balance": 20, "unit": "次生成" }
+}</pre>
+
+<h2>2 · 生成音乐</h2>
+<p>两种模式二选一：<strong>灵感模式</strong>用一句描述，<strong>自定义模式</strong>给歌词加风格。</p>
+<table>
+<tr><th>gpt_description_prompt</th><td>灵感模式：一句音乐描述，例如「温暖的城市民谣，木吉他，女声」</td></tr>
+<tr><th>prompt</th><td>自定义模式：歌词正文</td></tr>
+<tr><th>tags</th><td>自定义模式的风格标签，例如 <code>lofi hiphop, mellow piano</code></td></tr>
+<tr><th>title</th><td>歌名，可选</td></tr>
+<tr><th>mv</th><td><code>chirp-goose</code>（默认，最省）/ <code>chirp-hawk</code> / <code>chirp-hawk-wild</code>；不传按默认走，不必关心</td></tr>
+<tr><th>make_instrumental</th><td><code>true</code> 纯音乐，<code>false</code> 带人声</td></tr>
+<tr><th>duration</th><td>10–360 秒；不传由模型决定，<strong>不要传 null</strong></td></tr>
+<tr><th>negative_tags</th><td>需要排除的风格，可选</td></tr>
+</table>
+<pre>curl -X POST https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi/v1/music/generate \
+  -H "Authorization: Bearer tq_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gpt_description_prompt": "温暖的城市民谣，木吉他，女声",
+    "make_instrumental": false,
+    "title": "晚风里的你"
+  }'</pre>
+<pre>{
+  "code": 200,
+  "message": "success",
+  "data": { "task_ids": ["a1b2c3d4-...", "e5f6g7h8-..."] }
+}</pre>
+<div class="note">返回的只是任务号。必须继续调用「查询任务」轮询，直到 <code>status</code> 变成 <code>completed</code> 才能拿到音频。</div>
+
+<h2>3 · 查询任务</h2>
+<pre>curl -H "Authorization: Bearer tq_xxx" \
+  "https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi/v1/music/task?id=a1b2c3d4-..."</pre>
+<table>
+<tr><th>status</th><td><code>processing</code> 生成中 / <code>completed</code> 完成 / <code>failed</code> 失败</td></tr>
+<tr><th>result.custom_id</th><td>歌曲唯一 ID，后续延长、翻唱、裁剪都用它</td></tr>
+<tr><th>result.fileInfo.mp3Url</th><td>MP3 地址（约 1 小时有效）</td></tr>
+<tr><th>result.proxy_url</th><td>签名代理地址，优先用这个</td></tr>
+<tr><th>result.fileInfo.cosUrl</th><td>封面图地址</td></tr>
+<tr><th>result.fileInfo.duration</th><td>时长（秒）</td></tr>
+</table>
+<p>轮询间隔建议 3–5 秒，不要高频空转。</p>
+
+<h2>错误码</h2>
+<table>
+<tr><th>401</th><td>没带 Key，或 Key 无效 / 已停用</td></tr>
+<tr><th>402</th><td>自己的额度不足，<code>data.balance</code> 是当前余额</td></tr>
+<tr><th>400</th><td>请求体不是合法 JSON、缺少必要参数或参数不合法</td></tr>
+<tr><th>404</th><td>接口路径不存在</td></tr>
+<tr><th>502 / 503</th><td>上游生成服务异常，<strong>本次不扣额度</strong>，可稍后重试</td></tr>
+</table>
+
+<h2>最小可用流程（JavaScript）</h2>
+<pre>const BASE = 'https://pfamjwzbmpwskhsspcev.supabase.co/functions/v1/musicapi';
+const KEY  = 'tq_xxx';
+const H    = { Authorization: 'Bearer ' + KEY };
+
+async function makeSong(desc) {
+  const res = await fetch(BASE + '/v1/music/generate', {
+    method: 'POST',
+    headers: { ...H, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ gpt_description_prompt: desc })
+  });
+  const { data } = await res.json();
+  for (const id of data.task_ids) {
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 4000));
+      const t = await fetch(BASE + '/v1/music/task?id=' + id, { headers: H }).then(r => r.json());
+      if (t.data?.status === 'completed') return t.data.result;
+      if (t.data?.status === 'failed') throw new Error('生成失败');
+    }
+  }
+}</pre>
+
+<h2>Key 与额度</h2>
+<p>本接口不开放公众注册，Key 由平台方手动发放；需要 Key 或加额度，联系平台运营。</p>
+
+<p style="margin-top:40px;color:var(--muted);font-size:13px">© 2026 天强AI音乐创作平台 · 接口文档</p>
+</div></body></html>
